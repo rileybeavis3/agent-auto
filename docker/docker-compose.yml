@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: verodex-postgres
+    environment:
+      POSTGRES_DB: verodex
+      POSTGRES_USER: verodex
+      POSTGRES_PASSWORD: verodex_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verodex"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: verodex-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Identity Service
+  identity:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.identity
+    container_name: verodex-identity
+    ports:
+      - "4102:4102"
+    environment:
+      PORT: 4102
+      NODE_ENV: development
+      DATABASE_URL: postgresql://verodex:verodex_dev_password@postgres:5432/verodex
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../packages:/app/packages
+      - ../services/identity:/app/services/identity
+    command: pnpm --filter @verodex/identity dev
+
+  # Governance Service
+  governance:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.governance
+    container_name: verodex-governance
+    ports:
+      - "4103:4103"
+    environment:
+      PORT: 4103
+      NODE_ENV: development
+      DATABASE_URL: postgresql://verodex:verodex_dev_password@postgres:5432/verodex
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../packages:/app/packages
+      - ../services/governance:/app/services/governance
+    command: pnpm --filter @verodex/governance dev
+
+  # Audit Service
+  audit:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.audit
+    container_name: verodex-audit
+    ports:
+      - "4106:4106"
+    environment:
+      PORT: 4106
+      NODE_ENV: development
+      DATABASE_URL: postgresql://verodex:verodex_dev_password@postgres:5432/verodex
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../packages:/app/packages
+      - ../services/audit:/app/services/audit
+    command: pnpm --filter @verodex/audit dev
+
+volumes:
+  postgres_data:
+  redis_data:
